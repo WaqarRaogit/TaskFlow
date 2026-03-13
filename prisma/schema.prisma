@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// AUTH MODELS (NextAuth requires these exact field names)
+// ========================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ========================
+// CORE APP MODELS
+// ========================
+
+model User {
+  id            String       @id @default(cuid())
+  name          String?
+  email         String       @unique
+  emailVerified DateTime?
+  password      String?      @db.Text
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  assignedTasks Task[]       @relation("TaskAssignee")
+  comments      Comment[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Organization {
+  id                   String       @id @default(cuid())
+  name                 String
+  slug                 String       @unique
+  plan                 Plan         @default(FREE)
+  stripeCustomerId     String?      @unique
+  stripeSubscriptionId String?
+  members              Membership[]
+  projects             Project[]
+  invites              Invite[]
+  labels               Label[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model Membership {
+  id        String       @id @default(cuid())
+  role      Role         @default(MEMBER)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId     String
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, orgId])
+}
+
+model Project {
+  id          String       @id @default(cuid())
+  name        String
+  description String?      @db.Text
+  color       String       @default("#7c3aed")
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId       String
+  tasks       Task[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?    @db.Text
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  position    Int        @default(0)
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   String
+  assignee    User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  assigneeId  String?
+  labels      Label[]
+  comments    Comment[]
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Label {
+  id    String       @id @default(cuid())
+  name  String
+  color String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId String
+  tasks Task[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Invite {
+  id        String       @id @default(cuid())
+  email     String
+  role      Role         @default(MEMBER)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId     String
+  token     String       @unique @default(cuid())
+  expiresAt DateTime
+  createdAt DateTime     @default(now())
+}
+
+// ========================
+// ENUMS
+// ========================
+
+enum Role {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
